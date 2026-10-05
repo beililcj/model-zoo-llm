@@ -387,6 +387,14 @@ void LLMService::update_extra_body(const std::string& extra_body_json) {
     pimpl_->backend->update_config("extra_body", extra_body_json);
 }
 
+void LLMService::set_abort_check(std::function<bool()> check) {
+    pimpl_->backend->set_abort_check(std::move(check));
+}
+
+void LLMService::update_stall_timeout(int seconds) {
+    pimpl_->backend->update_config("stall_timeout", std::to_string(seconds));
+}
+
 // =============================================================================
 // Metrics
 // =============================================================================
