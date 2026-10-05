@@ -540,6 +540,14 @@ static nlohmann::json message_to_json(const LLMService::ChatMessage& msg) {
     return m;
 }
 
+// 把 extra_body 的字段合并进请求，同名字段以 extra_body 为准。
+static nlohmann::json with_extra_body(const nlohmann::json& request, const std::string& extra_body) {
+    if (extra_body.empty()) return request;
+    nlohmann::json merged = request;
+    merged.update(nlohmann::json::parse(extra_body));
+    return merged;
+}
+
 static nlohmann::json messages_to_json(
     const std::vector<LLMService::ChatMessage>& messages) {
     nlohmann::json arr = nlohmann::json::array();
@@ -820,6 +828,9 @@ struct OpenAIBackend::Impl {
     std::string api_base;
     std::string api_key;
     int reasoning_budget = -1;
+    // 原样合并进每个请求体的字段（JSON 对象文本），用于服务商专有参数，
+    // 如 DeepSeek 关闭推理：{"thinking": {"type": "disabled"}}。
+    std::string extra_body;
     bool initialized = false;
 
     std::thread worker_thread;
@@ -888,7 +899,7 @@ std::string OpenAIBackend::complete(
 
     std::string url = pimpl_->api_base + "/chat/completions";
     std::string response = http_post(
-        url, request.dump(), pimpl_->api_key);
+        url, with_extra_body(request, pimpl_->extra_body).dump(), pimpl_->api_key);
 
     auto json_response = nlohmann::json::parse(response);
     std::string content = json_response["choices"][0]["message"]["content"]
@@ -966,7 +977,7 @@ void OpenAIBackend::complete_stream(
         try {
             std::string url = pimpl_->api_base + "/chat/completions";
             http_post_stream(
-                url, request.dump(), pimpl_->api_key, stream_data);
+                url, with_extra_body(request, pimpl_->extra_body).dump(), pimpl_->api_key, stream_data);
         } catch (const std::exception& e) {
             if (!stream_data.finished) {
                 callback("", true, e.what());
@@ -1000,7 +1011,7 @@ std::string OpenAIBackend::chat(
 
     std::string url = pimpl_->api_base + "/chat/completions";
     std::string response = http_post(
-        url, request.dump(), pimpl_->api_key);
+        url, with_extra_body(request, pimpl_->extra_body).dump(), pimpl_->api_key);
 
     auto json_response = nlohmann::json::parse(response);
     std::string content = json_response["choices"][0]["message"]["content"]
@@ -1055,7 +1066,7 @@ LLMService::ChatResult OpenAIBackend::chat_stream(
 
     std::string url = pimpl_->api_base + "/chat/completions";
     return http_post_chat_stream(
-        url, request.dump(), pimpl_->api_key, stream_data);
+        url, with_extra_body(request, pimpl_->extra_body).dump(), pimpl_->api_key, stream_data);
 #else
     (void)messages;
     (void)max_tokens;
@@ -1079,6 +1090,13 @@ void OpenAIBackend::update_config(
         pimpl_->model = value;
     } else if (key == "reasoning_budget") {
         pimpl_->reasoning_budget = std::stoi(value);
+    } else if (key == "extra_body") {
+#ifdef USE_HTTP_CLIENT
+        if (!value.empty() && !nlohmann::json::parse(value).is_object()) {
+            throw std::invalid_argument("extra_body must be a JSON object");
+        }
+#endif
+        pimpl_->extra_body = value;
     }
 }
 

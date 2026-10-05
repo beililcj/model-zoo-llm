@@ -142,6 +142,9 @@ public:
     void update_model(const std::string& new_model);
     void update_api_settings(const std::string& api_base, const std::string& api_key);
     void update_reasoning_budget(int reasoning_budget);
+    // 合并进每个请求体的 JSON 对象文本，用于服务商专有参数，例如 DeepSeek 关闭推理：
+    // {"thinking": {"type": "disabled"}}。空字符串表示不加；不是 JSON 对象时抛异常。
+    void update_extra_body(const std::string& extra_body_json);
 
     // =========================================================================
     // Metrics (LLM-oriented performance indicators)
